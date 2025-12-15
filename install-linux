@@ -278,42 +278,80 @@ echo "0. Cancel"
 echo ""
 read -p "Select option (0-9): " choice
 
+count=0
 case $choice in
     1)
-        rm -f "$CONFIG_DIR/antigravity.json"
-        echo -e "${GREEN}[OK] Antigravity session removed${NC}"
+        count=$(find "$CONFIG_DIR" -maxdepth 1 -name "antigravity*.json" -type f -delete -print | wc -l)
+        if [ $count -gt 0 ]; then
+            echo -e "${GREEN}[OK] Removed $count Antigravity session(s)${NC}"
+        else
+            echo -e "${YELLOW}[!] No Antigravity sessions found${NC}"
+        fi
         ;;
     2)
-        rm -f "$CONFIG_DIR/github_copilot.json"
-        echo -e "${GREEN}[OK] GitHub Copilot session removed${NC}"
+        count=$(find "$CONFIG_DIR" -maxdepth 1 -name "github*copilot*.json" -o -name "copilot*.json" -type f -delete -print | wc -l)
+        if [ $count -gt 0 ]; then
+            echo -e "${GREEN}[OK] Removed $count GitHub Copilot session(s)${NC}"
+        else
+            echo -e "${YELLOW}[!] No GitHub Copilot sessions found${NC}"
+        fi
         ;;
     3)
-        rm -f "$CONFIG_DIR/gemini.json"
-        echo -e "${GREEN}[OK] Gemini CLI session removed${NC}"
+        count=$(find "$CONFIG_DIR" -maxdepth 1 -name "gemini*.json" -type f -delete -print | wc -l)
+        if [ $count -gt 0 ]; then
+            echo -e "${GREEN}[OK] Removed $count Gemini CLI session(s)${NC}"
+        else
+            echo -e "${YELLOW}[!] No Gemini CLI sessions found${NC}"
+        fi
         ;;
     4)
-        rm -f "$CONFIG_DIR/codex.json"
-        echo -e "${GREEN}[OK] Codex session removed${NC}"
+        count=$(find "$CONFIG_DIR" -maxdepth 1 -name "codex*.json" -type f -delete -print | wc -l)
+        if [ $count -gt 0 ]; then
+            echo -e "${GREEN}[OK] Removed $count Codex session(s)${NC}"
+        else
+            echo -e "${YELLOW}[!] No Codex sessions found${NC}"
+        fi
         ;;
     5)
-        rm -f "$CONFIG_DIR/claude.json"
-        echo -e "${GREEN}[OK] Claude session removed${NC}"
+        count=$(find "$CONFIG_DIR" -maxdepth 1 -name "claude*.json" -type f -delete -print | wc -l)
+        if [ $count -gt 0 ]; then
+            echo -e "${GREEN}[OK] Removed $count Claude session(s)${NC}"
+        else
+            echo -e "${YELLOW}[!] No Claude sessions found${NC}"
+        fi
         ;;
     6)
-        rm -f "$CONFIG_DIR/qwen.json"
-        echo -e "${GREEN}[OK] Qwen session removed${NC}"
+        count=$(find "$CONFIG_DIR" -maxdepth 1 -name "qwen*.json" -type f -delete -print | wc -l)
+        if [ $count -gt 0 ]; then
+            echo -e "${GREEN}[OK] Removed $count Qwen session(s)${NC}"
+        else
+            echo -e "${YELLOW}[!] No Qwen sessions found${NC}"
+        fi
         ;;
     7)
-        rm -f "$CONFIG_DIR/iflow.json"
-        echo -e "${GREEN}[OK] iFlow session removed${NC}"
+        count=$(find "$CONFIG_DIR" -maxdepth 1 -name "iflow*.json" -type f -delete -print | wc -l)
+        if [ $count -gt 0 ]; then
+            echo -e "${GREEN}[OK] Removed $count iFlow session(s)${NC}"
+        else
+            echo -e "${YELLOW}[!] No iFlow sessions found${NC}"
+        fi
         ;;
     8)
-        rm -f "$CONFIG_DIR/kiro.json"
-        echo -e "${GREEN}[OK] Kiro session removed${NC}"
+        count=$(find "$CONFIG_DIR" -maxdepth 1 -name "kiro*.json" -type f -delete -print | wc -l)
+        if [ $count -gt 0 ]; then
+            echo -e "${GREEN}[OK] Removed $count Kiro session(s)${NC}"
+        else
+            echo -e "${YELLOW}[!] No Kiro sessions found${NC}"
+        fi
         ;;
     9)
-        rm -f "$CONFIG_DIR"/*.json
-        echo -e "${GREEN}[OK] All provider sessions removed${NC}"
+        # Remove all JSON files except config.yaml
+        count=$(find "$CONFIG_DIR" -maxdepth 1 -name "*.json" -type f -delete -print | wc -l)
+        if [ $count -gt 0 ]; then
+            echo -e "${GREEN}[OK] Removed $count session file(s)${NC}"
+        else
+            echo -e "${YELLOW}[!] No session files found${NC}"
+        fi
         ;;
     0)
         echo "Cancelled."
