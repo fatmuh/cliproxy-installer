@@ -1,110 +1,196 @@
 #!/usr/bin/env bash
+set -e
+
 # ==============================================================================
-# CLIProxy Linux Installer (SAFE FOR CURL | BASH)
+# CLIProxy Installer (Shell-aware, Safe)
 # ==============================================================================
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-log(){ echo -e "${CYAN}[*]${NC} $*"; }
-ok(){ echo -e "${GREEN}[OK]${NC} $*"; }
-
-BIN="$HOME/bin"
-CFG="$HOME/.cli-proxy-api"
-SCR="$CFG/scripts"
-PORT=8317
+BIN_DIR="$HOME/bin"
+BASE_DIR="$HOME/.cli-proxy-api"
+SCRIPTS_DIR="$BASE_DIR/scripts"
 
 # ------------------------------------------------------------------------------
-log "Preparing directories..."
-mkdir -p "$BIN" "$SCR"
+# Detect shell & rc file
+# ------------------------------------------------------------------------------
+detect_shell_rc() {
+    if [ -n "$ZSH_VERSION" ]; then
+        SHELL_NAME="zsh"
+        SHELL_RC="$HOME/.zshrc"
+    elif [ -n "$BASH_VERSION" ]; then
+        SHELL_NAME="bash"
+        SHELL_RC="$HOME/.bashrc"
+    elif [ -n "$FISH_VERSION" ]; then
+        SHELL_NAME="fish"
+        SHELL_RC="$HOME/.config/fish/config.fish"
+    else
+        SHELL_NAME="bash"
+        SHELL_RC="$HOME/.bashrc"
+    fi
+}
 
 # ------------------------------------------------------------------------------
-log "Ensuring Go..."
-if ! command -v go >/dev/null 2>&1; then
-  . /etc/os-release
-  case "$ID" in
-    debian|ubuntu|kali|pop)
-      sudo apt update
-      sudo apt install -y golang
-      ;;
-    arch|manjaro)
-      sudo pacman -S --noconfirm go
-      ;;
-    fedora)
-      sudo dnf install -y golang
-      ;;
-    *)
-      echo "Install Go manually"; exit 1;;
-  esac
-fi
+# Install dependencies (Go only, git assumed present)
+# ------------------------------------------------------------------------------
+install_dependencies() {
+    if command -v go >/dev/null 2>&1; then
+        echo -e "${GREEN}[OK] Go already installed${NC}"
+        return
+    fi
+
+    echo -e "${YELLOW}[*] Installing Go...${NC}"
+
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+    fi
+
+    case "$ID" in
+        ubuntu|debian|kali|pop)
+            sudo apt update
+            sudo apt install -y golang
+            ;;
+        arch|manjaro)
+            sudo pacman -Sy --noconfirm go
+            ;;
+        fedora|rhel|centos)
+            sudo dnf install -y golang
+            ;;
+        *)
+            echo -e "${RED}[!] Unsupported distro. Install Go manually.${NC}"
+            exit 1
+            ;;
+    esac
+}
 
 # ------------------------------------------------------------------------------
-log "Installing CLIProxy..."
-TMP=$(mktemp -d)
-git clone --depth 1 https://github.com/router-for-me/CLIProxyAPIPlus.git "$TMP"
-cd "$TMP" || exit 1
-go build -o cliproxyapi-plus ./cmd/server
-mv cliproxyapi-plus "$BIN/"
-cd ~
-rm -rf "$TMP"
+# Shortcuts (shell-aware)
+# ------------------------------------------------------------------------------
+setup_shortcuts() {
+    detect_shell_rc
+    mkdir -p "$(dirname "$SHELL_RC")"
+
+    echo -e "${YELLOW}[*] Installing shortcuts into $SHELL_RC ($SHELL_NAME)${NC}"
+
+    sed -i '/CLIProxy Shortcuts/d' "$SHELL_RC" 2>/dev/null || true
+    sed -i '/alias cp-/d' "$SHELL_RC" 2>/dev/null || true
+
+    echo "" >> "$SHELL_RC"
+    echo "# CLIProxy Shortcuts" >> "$SHELL_RC"
+
+    if [ "$SHELL_NAME" = "fish" ]; then
+        cat >> "$SHELL_RC" <<EOF
+alias cp-login "$SCRIPTS_DIR/login.sh"
+alias cp-start "$SCRIPTS_DIR/start.sh"
+alias cp-logout "$SCRIPTS_DIR/logout.sh"
+alias cp-update "curl -fsSL https://raw.githubusercontent.com/fatmuh/cliproxy-installer/master/install-linux | bash -s -- -update"
+EOF
+    else
+        cat >> "$SHELL_RC" <<EOF
+alias cp-login="$SCRIPTS_DIR/login.sh"
+alias cp-start="$SCRIPTS_DIR/start.sh"
+alias cp-logout="$SCRIPTS_DIR/logout.sh"
+alias cp-update='curl -fsSL https://raw.githubusercontent.com/fatmuh/cliproxy-installer/master/install-linux | bash -s -- -update'
+EOF
+    fi
+}
 
 # ------------------------------------------------------------------------------
-log "Writing config..."
-mkdir -p "$CFG"
-cat > "$CFG/config.yaml" <<EOF
-port: $PORT
-auth-dir: "$CFG"
+# Install CLIProxy core
+# ------------------------------------------------------------------------------
+install_cliproxy() {
+    echo -e "${CYAN}[*] Installing CLIProxy...${NC}"
+
+    mkdir -p "$BIN_DIR" "$SCRIPTS_DIR"
+
+    # ensure PATH
+    case ":$PATH:" in
+        *":$BIN_DIR:"*) ;;
+        *) echo 'export PATH="$HOME/bin:$PATH"' >> "$HOME/.profile" ;;
+    esac
+
+    TMP=$(mktemp -d)
+    git clone --depth 1 https://github.com/router-for-me/CLIProxyAPIPlus.git "$TMP"
+    (cd "$TMP" && go build -o cliproxyapi-plus ./cmd/server)
+    mv "$TMP/cliproxyapi-plus" "$BIN_DIR/"
+    rm -rf "$TMP"
+
+    # config
+    if [ ! -f "$BASE_DIR/config.yaml" ]; then
+        cat > "$BASE_DIR/config.yaml" <<EOF
+port: 8317
+auth-dir: "$BASE_DIR"
 api-keys:
   - "sk-dummy"
 EOF
+    fi
+
+    # start
+    cat > "$SCRIPTS_DIR/start.sh" <<EOF
+#!/usr/bin/env bash
+"$BIN_DIR/cliproxyapi-plus" --config "$BASE_DIR/config.yaml"
+EOF
+
+    # login
+    cat > "$SCRIPTS_DIR/login.sh" <<EOF
+#!/usr/bin/env bash
+"$BIN_DIR/cliproxyapi-plus" --config "$BASE_DIR/config.yaml" -antigravity-login
+EOF
+
+    # logout
+    cat > "$SCRIPTS_DIR/logout.sh" <<'EOF'
+#!/usr/bin/env bash
+set -e
+
+BASE="$HOME/.cli-proxy-api"
+
+rm -rf \
+  "$BASE/auth" \
+  "$BASE/sessions" \
+  "$BASE/tokens" \
+  "$BASE"/antigravity-*.json 2>/dev/null || true
+
+rm -rf "$HOME/.config/antigravity" "$HOME/.cache/antigravity" 2>/dev/null || true
+
+echo "✔ CLIProxy logged out"
+EOF
+
+    chmod +x "$SCRIPTS_DIR"/*.sh
+}
 
 # ------------------------------------------------------------------------------
-log "Writing scripts..."
-
-cat > "$SCR/start.sh" <<EOF
-#!/usr/bin/env bash
-exec "$BIN/cliproxyapi-plus" --config "$CFG/config.yaml"
-EOF
-
-cat > "$SCR/login.sh" <<EOF
-#!/usr/bin/env bash
-"$BIN/cliproxyapi-plus" --config "$CFG/config.yaml" -antigravity-login
-EOF
-
-cat > "$SCR/logout.sh" <<EOF
-#!/usr/bin/env bash
-rm -rf "$CFG"/{antigravity,copilot,claude,gemini,qwen,iflow,kiro,session.json}
-echo "Logged out"
-EOF
-
-cat > "$SCR/uninstall.sh" <<'EOF'
-#!/usr/bin/env bash
-read -p "Type YES to uninstall: " C
-[[ "$C" == "YES" ]] || exit 1
-
-pkill -x cliproxyapi-plus 2>/dev/null || true
-rm -rf "$HOME/.cli-proxy-api" "$HOME/bin/cliproxyapi-plus"
-
-sed -i '/cp-/d' ~/.bashrc ~/.zshrc 2>/dev/null || true
-
-echo "CLIProxy removed"
-EOF
-
-chmod +x "$SCR/"*.sh
+# Update mode
+# ------------------------------------------------------------------------------
+if [ "$1" = "-update" ]; then
+    install_dependencies
+    install_cliproxy
+    setup_shortcuts
+    echo -e "${GREEN}✔ Update complete${NC}"
+    exit 0
+fi
 
 # ------------------------------------------------------------------------------
-log "Registering aliases..."
-cat >> "$HOME/.bashrc" <<EOF
-
-# CLIProxy
-alias cp-start="$SCR/start.sh"
-alias cp-login="$SCR/login.sh"
-alias cp-logout="$SCR/logout.sh"
-alias cp-uninstall="$SCR/uninstall.sh"
-EOF
-
+# Main
 # ------------------------------------------------------------------------------
-ok "INSTALL SUCCESS"
-echo "Restart terminal or run: source ~/.bashrc"
+clear
+echo "CLIProxy Installer"
+echo "1) Install"
+echo "2) Exit"
+read -rp "Choice: " c
+
+case "$c" in
+    1)
+        install_dependencies
+        install_cliproxy
+        setup_shortcuts
+        echo -e "${GREEN}✔ Installation finished${NC}"
+        echo "Restart terminal or run: source $SHELL_RC"
+        ;;
+    *)
+        exit 0
+        ;;
+esac
