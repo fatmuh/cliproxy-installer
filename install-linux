@@ -1,15 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# CLIProxy Linux Installer (CLEAN + FULL)
-# Commands:
-#   cp-login
-#   cp-logout
-#   cp-start
-#   cp-update
-#   cp-uninstall
-#
-# Git is NOT touched
-# Go will be removed on uninstall
+# CLIProxy Linux Installer (FINAL FIXED)
+# Safe for: curl | bash
 # ==============================================================================
 
 set -Eeuo pipefail
@@ -30,12 +22,27 @@ die() { echo -e "${RED}[ERR]${NC} $*"; exit 1; }
 BIN_DIR="$HOME/bin"
 CFG_DIR="$HOME/.cli-proxy-api"
 SCR_DIR="$CFG_DIR/scripts"
+PORT="8317"
 
-# ---------------- CLEAN OLD CLIProxy ----------------
+# ---------------- SAFE STOP ----------------
+stop_cliproxy() {
+  log "Stopping running CLIProxy (if any)..."
+
+  if pgrep -x cliproxyapi-plus >/dev/null 2>&1; then
+    pkill -x cliproxyapi-plus || true
+    sleep 1
+  fi
+
+  if command -v lsof >/dev/null 2>&1; then
+    PID=$(lsof -ti :$PORT || true)
+    [[ -n "$PID" ]] && kill "$PID" || true
+  fi
+}
+
+# ---------------- CLEAN OLD ----------------
 clean_old() {
   log "Cleaning old CLIProxy installs..."
-
-  pkill -f cliproxyapi 2>/dev/null || true
+  stop_cliproxy
 
   rm -f \
     "$BIN_DIR/cliproxyapi" \
@@ -45,12 +52,12 @@ clean_old() {
 
   rm -rf \
     "$HOME/.cliproxyapi" \
-    "$HOME/.cli-proxy-api" \
+    "$CFG_DIR" \
     "$HOME/.config/cli-proxy-api"
 
   for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
     [[ -f "$rc" ]] || continue
-    sed -i '/cp-login/d;/cp-logout/d;/cp-start/d;/cp-update/d;/cp-uninstall/d;/CLIProxy/d' "$rc"
+    sed -i '/CLIProxy/d;/cp-login/d;/cp-logout/d;/cp-start/d;/cp-update/d;/cp-uninstall/d' "$rc"
   done
 
   ok "Old CLIProxy cleaned"
@@ -83,7 +90,7 @@ install_go() {
   esac
 }
 
-# ---------------- BUILD CLIProxy ----------------
+# ---------------- INSTALL CLIProxy ----------------
 install_cliproxy() {
   mkdir -p "$BIN_DIR" "$SCR_DIR"
 
@@ -109,7 +116,7 @@ write_config() {
   mkdir -p "$CFG_DIR"
 
   cat > "$CFG_DIR/config.yaml" <<EOF
-port: 8317
+port: $PORT
 auth-dir: "$CFG_DIR"
 api-keys:
   - "sk-dummy"
@@ -156,10 +163,12 @@ echo "CLIProxy Uninstall"
 read -p "Type YES to continue: " C
 [[ "$C" == "YES" ]] || exit 1
 
-pkill -f cliproxyapi 2>/dev/null || true
+if pgrep -x cliproxyapi-plus >/dev/null 2>&1; then
+  pkill -x cliproxyapi-plus || true
+fi
 
 rm -f "$HOME/bin/cliproxyapi-plus"
-sudo rm -f /usr/local/bin/cliproxyapi-plus
+sudo rm -f /usr/local/bin/cliproxyapi-plus 2>/dev/null || true
 
 rm -rf "$HOME/.cli-proxy-api" "$HOME/.cliproxyapi"
 
@@ -188,7 +197,7 @@ fi
 rm -rf "$HOME/go"
 sudo rm -rf /usr/local/go 2>/dev/null || true
 
-echo "[OK] CLIProxy uninstalled"
+echo "[OK] CLIProxy fully uninstalled"
 EOF
 
   chmod +x "$SCR_DIR/"*.sh
@@ -203,15 +212,11 @@ alias cp-login="$SCR_DIR/login.sh"
 alias cp-logout="$SCR_DIR/logout.sh"
 alias cp-start="$SCR_DIR/start.sh"
 alias cp-uninstall="$SCR_DIR/uninstall.sh"
-alias cp-update="curl -sL https://raw.githubusercontent.com/khmuhtadin/cliproxy-installer/main/install-linux | bash"
+alias cp-update="curl -fsSL https://raw.githubusercontent.com/fatmuh/cliproxy-installer/master/install-linux | bash"
 EOF
 }
 
 # ---------------- MAIN ----------------
-if [[ "${1:-}" == "-update" ]]; then
-  clean_old
-fi
-
 clean_old
 install_go
 install_cliproxy
